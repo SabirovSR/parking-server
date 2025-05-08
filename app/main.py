@@ -1,13 +1,16 @@
 from fastapi import FastAPI, WebSocket, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from database import smart_parking_db
-from models import VehicleArrival
+from models import VehicleArrival, ParkingSpot
 from datetime import datetime, timedelta
 from pymongo import ReturnDocument
 import json
 import uuid
 
-app = FastAPI()
+app = FastAPI(
+    title="Smart Parking Management System API",
+    description="FastAPI-приложение для автоматизации работы парковки с поддержкой WebSocket для обновлений в реальном времени.",
+    version="1.0.0")
 
 # Настройка CORS
 app.add_middleware(
