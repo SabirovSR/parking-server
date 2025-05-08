@@ -84,10 +84,14 @@ def find_available_spot(vehicle_type: str) -> dict:
     # Определяем подходящие типы мест для ТС
     if vehicle_type == "bus":
         query["spot_type"] = "bus"
-    elif vehicle_type in ["truck", "car"]:
-        query["spot_type"] = {"$in": ["regular", "ev"]}
-    else:  # motorcycle
-        query["spot_type"] = {"$in": ["regular", "ev", "disabled"]}
+    elif vehicle_type in ["truck", "car", "motorcycle"]:
+        query["spot_type"] = "regular"
+    elif vehicle_type == "evCar":
+        query["spot_type"] = "ev"
+    elif vehicle_type == "disCar":
+        query["spot_type"] = "disabled"
+    else:  # the type of transport is not supported
+        return None
     
     spot = smart_parking_db.spots.find_one_and_update(
         query,
