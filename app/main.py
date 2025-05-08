@@ -1,7 +1,7 @@
 from fastapi import FastAPI, WebSocket, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from database import smart_parking_db
-from models import VehicleArrival, ParkingSpot
+from models import VehicleArrival
 from datetime import datetime, timedelta
 from pymongo import ReturnDocument
 import json
@@ -25,9 +25,8 @@ app.add_middleware(
 PARKING_CAPACITY = 50  # Общее количество мест
 TARIFFS = {  # Тарифы в рублях/минуту
     "car": 1.5,
-    "bus": 3.0,
-    "truck": 4.0,
-    "motorcycle": 0.7
+    "disCar": 2,
+    "evCar": 2.5
 }
 
 # Инициализация парковочных мест при первом запуске
@@ -38,7 +37,6 @@ def initialize_parking(parkingCapacity = PARKING_CAPACITY):
             spot_type = "regular"
             if i < 3: spot_type = "disabled"
             elif 3 <= i < 5: spot_type = "ev"
-            elif i == 49: spot_type = "bus"
             
             spots.append({
                 "spot_id": i,
@@ -82,9 +80,7 @@ def find_available_spot(vehicle_type: str) -> dict:
     query = {"status": "free"}
     
     # Определяем подходящие типы мест для ТС
-    if vehicle_type == "bus":
-        query["spot_type"] = "bus"
-    elif vehicle_type in ["truck", "car", "motorcycle"]:
+    if vehicle_type == "car":
         query["spot_type"] = "regular"
     elif vehicle_type == "evCar":
         query["spot_type"] = "ev"
@@ -148,10 +144,15 @@ async def vehicle_depart(vehicle_id: str):
         raise HTTPException(status_code=400, detail="Already paid")
     
     # Расчет времени и стоимости
+    try:
+        tariff = TARIFFS[vehicle["type"]]
+    except:
+        tariff = 0
+
     exit_time = datetime.now()
     entry_time = vehicle["entry_time"]
     duration = (exit_time - entry_time).total_seconds() / 60  # в минутах
-    cost = duration * TARIFFS[vehicle["type"]]
+    cost = duration * tariff
     
     # Обновляем запись ТС
     smart_parking_db.vehicles.update_one(
