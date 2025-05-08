@@ -7,7 +7,10 @@ from pymongo import ReturnDocument
 import json
 import uuid
 
-app = FastAPI()
+app = FastAPI(
+    title="Smart Parking Management System API",
+    description="FastAPI-приложение для автоматизации работы парковки с поддержкой WebSocket для обновлений в реальном времени.",
+    version="1.0.0")
 
 # Настройка CORS
 app.add_middleware(
