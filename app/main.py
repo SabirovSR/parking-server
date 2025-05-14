@@ -285,13 +285,17 @@ def format_timestamp(dt: datetime, interval: str) -> str:
     if interval == "10s":
         return dt.strftime("%Y-%m-%d %H:%M:%S")
     elif interval == "1m":
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%Y-%m-%d %H:%M")
     elif interval == "5m":
-        return dt.strftime("%Y-%m-%d %H:%M")
+        # Округляем до ближайших 5 минут
+        minutes = (dt.minute // 5) * 5
+        return dt.replace(minute=minutes, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
     elif interval == "15m":
-        return dt.strftime("%Y-%m-%d %H:%M")
+        # Округляем до ближайших 15 минут
+        minutes = (dt.minute // 15) * 15
+        return dt.replace(minute=minutes, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
     else:  # 1h
-        return dt.strftime("%Y-%m-%d %H")
+        return dt.strftime("%Y-%m-%d %H:00")
 
 @app.get("/api/stats/vehicles")
 async def get_vehicles_stats(
@@ -325,7 +329,7 @@ async def get_vehicles_stats(
             "$group": {
                 "_id": {
                     "$dateToString": {
-                        "format": format_timestamp(datetime.now(), interval),
+                        "format": "%Y-%m-%d %H:%M:%S",
                         "date": "$timestamp"
                     }
                 },
@@ -339,7 +343,21 @@ async def get_vehicles_stats(
     stats = list(smart_parking_db.parking_load_history.aggregate(pipeline))
     
     # Создаем словарь с данными
-    stats_dict = {stat["_id"]: stat for stat in stats}
+    stats_dict = {}
+    for stat in stats:
+        dt = datetime.strptime(stat["_id"], "%Y-%m-%d %H:%M:%S")
+        timestamp = format_timestamp(dt, interval)
+        if timestamp not in stats_dict:
+            stats_dict[timestamp] = {
+                "count": 0,
+                "occupied_spots": 0,
+                "load_percentage": 0,
+                "total_count": 0
+            }
+        stats_dict[timestamp]["count"] += stat["count"]
+        stats_dict[timestamp]["occupied_spots"] += stat["occupied_spots"]
+        stats_dict[timestamp]["load_percentage"] += stat["load_percentage"]
+        stats_dict[timestamp]["total_count"] += 1
     
     # Формируем результат со всеми интервалами
     result = []
@@ -350,8 +368,8 @@ async def get_vehicles_stats(
             result.append({
                 "timestamp": timestamp,
                 "count": stat["count"],
-                "occupied_spots": round(stat["occupied_spots"], 2),
-                "load_percentage": round(stat["load_percentage"], 2)
+                "occupied_spots": round(stat["occupied_spots"] / stat["total_count"], 2),
+                "load_percentage": round(stat["load_percentage"] / stat["total_count"], 2)
             })
         else:
             result.append({
@@ -396,7 +414,7 @@ async def get_revenue_stats(
             "$group": {
                 "_id": {
                     "$dateToString": {
-                        "format": format_timestamp(datetime.now(), interval),
+                        "format": "%Y-%m-%d %H:%M:%S",
                         "date": "$exit_time"
                     }
                 },
@@ -409,7 +427,17 @@ async def get_revenue_stats(
     stats = list(smart_parking_db.parking_history.aggregate(pipeline))
     
     # Создаем словарь с данными
-    stats_dict = {stat["_id"]: stat for stat in stats}
+    stats_dict = {}
+    for stat in stats:
+        dt = datetime.strptime(stat["_id"], "%Y-%m-%d %H:%M:%S")
+        timestamp = format_timestamp(dt, interval)
+        if timestamp not in stats_dict:
+            stats_dict[timestamp] = {
+                "revenue": 0,
+                "count": 0
+            }
+        stats_dict[timestamp]["revenue"] += stat["revenue"]
+        stats_dict[timestamp]["count"] += stat["count"]
     
     # Формируем результат со всеми интервалами
     result = []
@@ -464,7 +492,7 @@ async def get_duration_stats(
             "$group": {
                 "_id": {
                     "$dateToString": {
-                        "format": format_timestamp(datetime.now(), interval),
+                        "format": "%Y-%m-%d %H:%M:%S",
                         "date": "$exit_time"
                     }
                 },
@@ -479,7 +507,22 @@ async def get_duration_stats(
     stats = list(smart_parking_db.parking_history.aggregate(pipeline))
     
     # Создаем словарь с данными
-    stats_dict = {stat["_id"]: stat for stat in stats}
+    stats_dict = {}
+    for stat in stats:
+        dt = datetime.strptime(stat["_id"], "%Y-%m-%d %H:%M:%S")
+        timestamp = format_timestamp(dt, interval)
+        if timestamp not in stats_dict:
+            stats_dict[timestamp] = {
+                "avg_duration": 0,
+                "min_duration": float('inf'),
+                "max_duration": 0,
+                "count": 0,
+                "total_duration": 0
+            }
+        stats_dict[timestamp]["total_duration"] += stat["avg_duration"] * stat["count"]
+        stats_dict[timestamp]["min_duration"] = min(stats_dict[timestamp]["min_duration"], stat["min_duration"])
+        stats_dict[timestamp]["max_duration"] = max(stats_dict[timestamp]["max_duration"], stat["max_duration"])
+        stats_dict[timestamp]["count"] += stat["count"]
     
     # Формируем результат со всеми интервалами
     result = []
@@ -489,8 +532,8 @@ async def get_duration_stats(
             stat = stats_dict[timestamp]
             result.append({
                 "timestamp": timestamp,
-                "avg_duration": round(stat["avg_duration"], 2),
-                "min_duration": round(stat["min_duration"], 2),
+                "avg_duration": round(stat["total_duration"] / stat["count"], 2) if stat["count"] > 0 else 0,
+                "min_duration": round(stat["min_duration"], 2) if stat["min_duration"] != float('inf') else 0,
                 "max_duration": round(stat["max_duration"], 2),
                 "count": stat["count"]
             })
